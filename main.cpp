@@ -58,17 +58,49 @@ int main(int argc, char* argv[]) {
 
     char buffer[1024];
 
-    recv(client_fd, buffer, sizeof(buffer), 0);
+    int receive = recv(client_fd, buffer, sizeof(buffer), 0);
+    if (receive < 0) {
+      std::cerr << "Client error" << std::endl;
+      close(client_fd);
+    }
+    if (receive == 0) {
+      std::cerr << "Client disconnected" << std::endl;
+      close(client_fd);
+    }
 
-    std::int32_t message_size = htonl(15);
+    // Setting up request header variables
+    std::int32_t message_size = htonl(15); // This is just a random amount
+    std::int16_t request_api_key;
+    std::int16_t request_api_version;
     std::int32_t correlation_id;
 
+    // Parsing request header variables based on the buffer
+    memcpy(&request_api_key, buffer + 4, sizeof(request_api_key));
+    memcpy(&request_api_version, buffer + 6, sizeof(request_api_version));
     memcpy(&correlation_id, buffer + 8, sizeof(correlation_id));
 
-    std::cout << "ID: " << correlation_id << std::endl;
+    // Setting up response variables
+    std::int16_t error_code;
+
+    std::cout << "Key: " << htons(request_api_key) << std::endl;
+    std::cout << "Version: " << htons(request_api_version) << std::endl;
+    std::cout << "ID: " << htonl(correlation_id) << std::endl;
 
     send(client_fd, &message_size, sizeof(message_size), 0);
     send(client_fd, &correlation_id, sizeof(correlation_id), 0);
+
+    // Basic usage of parsed api key and version to get key and see if its the proper version
+    if (htons(request_api_key) == 0x12) {
+      if (htons(request_api_version) <= 0x04 && htons(request_api_version) >= 0x00) {
+        error_code = htons(0);
+      }
+      else {
+        error_code = htons(35);
+      }
+    }
+
+    send(client_fd, &error_code, sizeof(error_code), 0);
+
     close(client_fd);
 
     close(server_fd);
