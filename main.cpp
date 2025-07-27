@@ -56,8 +56,12 @@ int main(int argc, char* argv[]) {
     int client_fd = accept(server_fd, reinterpret_cast<struct sockaddr*>(&client_addr), &client_addr_len);
     std::cout << "Client connected\n";
 
+    // Buffer to collect received data and send data
     char buffer[1024];
+    char* send_buffer = nullptr;
+    std::size_t length = 0;
 
+    // Receiving data and checking for disconnect (which is kinda useless atp)
     int receive = recv(client_fd, buffer, sizeof(buffer), 0);
     if (receive < 0) {
       std::cerr << "Client error" << std::endl;
@@ -68,8 +72,10 @@ int main(int argc, char* argv[]) {
       close(client_fd);
     }
 
+    std::cout << buffer << std::endl << sizeof(buffer) << std::endl;
+
     // Setting up request header variables
-    std::int32_t message_size = htonl(15); // This is just a random amount
+    std::int32_t message_size = htonl(sizeof(buffer));
     std::int16_t request_api_key;
     std::int16_t request_api_version;
     std::int32_t correlation_id;
@@ -85,9 +91,11 @@ int main(int argc, char* argv[]) {
     std::cout << "Key: " << htons(request_api_key) << std::endl;
     std::cout << "Version: " << htons(request_api_version) << std::endl;
     std::cout << "ID: " << htonl(correlation_id) << std::endl;
+    std::cout << "Buffer Size: " << htonl(sizeof(buffer)) << std::endl;
 
-    send(client_fd, &message_size, sizeof(message_size), 0);
-    send(client_fd, &correlation_id, sizeof(correlation_id), 0);
+    length += sizeof(correlation_id);
+    send_buffer = (char*)realloc(send_buffer, length);
+    memcpy(send_buffer + length - sizeof(correlation_id), &correlation_id, sizeof(correlation_id));
 
     // Basic usage of parsed api key and version to get key and see if its the proper version
     if (htons(request_api_key) == 0x12) {
@@ -99,7 +107,16 @@ int main(int argc, char* argv[]) {
       }
     }
 
-    send(client_fd, &error_code, sizeof(error_code), 0);
+    length += sizeof(error_code);
+    send_buffer = (char*)realloc(send_buffer, length);
+    memcpy(send_buffer + length - sizeof(error_code), &error_code, sizeof(error_code));
+
+    // Adding message length to send_buffer and sending it
+    send_buffer = (char*)realloc(send_buffer, length + 4);
+    memcpy(send_buffer + 4, send_buffer, sizeof(send_buffer));
+    std::int32_t len = htonl(length);
+    memcpy(send_buffer, &len, 4);
+    send(client_fd, send_buffer, length + 4, 0);
 
     close(client_fd);
 
